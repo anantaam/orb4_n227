@@ -12,3 +12,7 @@ __pycache__/
 *.pyo
 _bak_*/
 !config/*.example.yaml
+
+# backtest generated artifacts
+backtest/cache/
+backtest/__pycache__/

@@ -1,0 +1,29 @@
+dim,param,value,is_sharpe,is_k,is_trades,oos_sharpe,oos_k,oos_trades,idle_pct
+VIX threshold,min_vix,10.0,2.57,2.1954,393,2.79,3.9671,823,1.2
+VIX threshold,min_vix,12.0,2.52,2.1977,390,3.02,3.7878,629,19.5
+VIX threshold,min_vix,14.0,2.28,2.016,345,2.72,3.7575,365,44.2
+VIX threshold,min_vix,16.0,1.66,1.3909,294,3.21,4.1051,170,63.8
+VIX threshold,min_vix,18.0,2.2,1.4562,199,4.56,2.2867,92,76.3
+VIX threshold,min_vix,20.0,3.1,1.2573,123,5.02,2.8335,44,86.7
+VIX threshold,min_vix,22.0,3.8,0.7133,57,7.99,1.7688,16,93.6
+Nifty ORB width,max_nifty_pct,0.3,1.87,0.0995,173,2.57,4.4678,562,36.9
+Nifty ORB width,max_nifty_pct,0.5,2.52,1.9634,309,2.87,4.4768,790,8.5
+Nifty ORB width,max_nifty_pct,0.7,2.22,1.5387,365,2.84,4.4195,820,2.2
+Nifty ORB width,max_nifty_pct,0.9,2.51,2.4922,384,2.86,4.3313,825,0.8
+Nifty ORB width,max_nifty_pct,1.1,2.59,2.2303,392,2.86,4.3313,825,0.4
+Nifty ORB width,max_nifty_pct,1.4,2.59,2.2303,392,2.86,4.303,829,0.2
+Nifty ORB width,max_nifty_pct,1.8,2.57,2.1954,393,2.87,4.3278,830,0.1
+Stock tightness,max_tight,0.4,0.0,0.0,0,0.0,0.0,0,99.9
+Stock tightness,max_tight,0.6,0.0,0.0,0,0.0,0.0,0,99.9
+Stock tightness,max_tight,0.8,0.0,0.0,0,0.0,0.0,0,99.9
+Stock tightness,max_tight,1.0,0.0,0.0,0,0.0,0.0,0,86.6
+Stock tightness,max_tight,1.2,0.0,0.0,0,0.0,0.0,0,85.4
+Stock tightness,max_tight,1.5,0.0,0.0,0,0.0,0.0,0,82.3
+Stock tightness,max_tight,2.0,0.0,0.0,0,0.0,0.0,0,49.7
+Score threshold,min_score,0.0,2.57,2.1954,393,2.92,4.2392,833,0.0
+Score threshold,min_score,0.3,2.57,2.1954,393,2.92,4.2392,833,0.0
+Score threshold,min_score,0.6,2.6,2.2351,387,2.96,4.1632,818,0.0
+Score threshold,min_score,0.9,2.46,2.5669,349,3.16,4.0284,778,0.1
+Score threshold,min_score,1.2,2.71,3.1086,320,3.17,4.3565,720,0.3
+Score threshold,min_score,1.5,2.4,2.679,276,3.29,4.575,667,1.2
+Score threshold,min_score,2.0,3.15,2.1873,227,3.49,5.0141,578,4.9
