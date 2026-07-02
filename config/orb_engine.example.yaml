@@ -1,0 +1,27 @@
+﻿mode: paper
+max_positions: 3
+engine_capital_inr: 100000
+market_protection: -1
+or_bars: 15
+entry_cutoff_ist: "11:30"
+hard_exit_ist: "14:45"
+or_atr_lookback: 14
+rvol_lookback: 14
+max_effective_leverage_cap: 5.0
+equity_mis_margin_buffer_fraction: 0.90
+margin_probe_order_type: MARKET
+entry_limit_poll_ms: 200
+entry_limit_timeout_seconds: 3
+entry_limit_ticks_from_trigger: 2
+exit_limit_poll_ms: 200
+exit_limit_timeout_seconds: 2
+exit_limit_bid_fraction: 0.9995
+exit_limit_ask_fraction: 1.0005
+limit_price_offset_fraction: 0.0015
+gap_filter_pct: 0.1
+min_score: 0.0
+data_1m_dir: /home/ubuntu/orb/data
+state_dir: /home/ubuntu/orb/state/baseline
+journal_path: /home/ubuntu/orb/state/baseline/trade_journal.jsonl
+discord_webhook_url: ""        # set real webhook in the live (gitignored) yaml
+non_trading_shutdown_command: ""

@@ -1,0 +1,14 @@
+# secrets & environment
+.env
+config/*.yaml
+
+# runtime / generated
+state/
+logs/
+data/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+_bak_*/
+!config/*.example.yaml
