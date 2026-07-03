@@ -502,6 +502,25 @@ def fetch_ltp_map(
                             out[sym] = v
                     except (TypeError, ValueError):
                         pass
+        # Per-symbol recovery: a batch quote can silently drop symbols (present in the
+        # request, absent / last_price=None in the response). Re-query each missing one
+        # individually and immediately, with an ohlc.close fallback -- so a transient
+        # gap in the batch never leaves a tradeable symbol unpriced.
+        missing = [inst for inst in instruments
+                   if inst.split(":")[-1].strip().upper() not in out]
+        for inst in missing:
+            sym = inst.split(":")[-1].strip().upper()
+            for _ in range(2):
+                try:
+                    r = kite.quote([inst]).get(inst, {})
+                    lp = r.get("last_price")
+                    if (lp is None or float(lp) <= 0) and isinstance(r.get("ohlc"), dict):
+                        lp = r["ohlc"].get("close")
+                    if lp is not None and float(lp) > 0:
+                        out[sym] = float(lp)
+                        break
+                except Exception:
+                    pass
         return out
     except Exception as e:
         if logger:

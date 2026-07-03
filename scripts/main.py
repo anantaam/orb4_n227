@@ -28,7 +28,7 @@ from orb_config import OrbConfig, load_config
 from orb_costs import zerodha_intraday_cost_orb
 from orb_notifier import notify, notify_error
 from orb_session_idle import handle_non_session_day, ist_now, ist_today_date
-from orb_sizing import size_candidates
+from orb_sizing import size_candidates, size_at_entry
 from orb_state import (
     append_jsonl, candidates_file, ensure_dirs, load_engine_state,
     preranking_file, save_engine_state, save_json, utc_now,
@@ -907,10 +907,6 @@ def main():
                     cand["traded"] = True
                     continue
 
-                qty = sized_map.get(sym, 0)
-                if qty < 1:
-                    continue
-
                 tok = token_cache.get(sym)
                 bar = fetch_latest_bar(broker, sym, trade_date, instrument_token=tok)
                 if bar is None:
@@ -932,6 +928,22 @@ def main():
                 entry_level = or_high if direction == 1 else or_low
                 logger.info("%s SIGNAL: %s bar_h/l=%.2f/%.2f vs OR=%.2f",
                             dir_str, sym, bar["high"], bar["low"], entry_level)
+
+                # Sizing: prefer the Phase-A qty; if that failed (transient no_ltp, etc.)
+                # re-size NOW at the actual entry price. orb_close floor guarantees a
+                # price is always available, so a data blip can never disqualify a breakout.
+                qty = sized_map.get(sym, 0)
+                if qty < 1:
+                    px = entry_level if entry_level > 0 else float(cand.get("orb_close") or bar["close"])
+                    qty = size_at_entry(cfg, broker, sym, cand["score"], px)
+                    if qty >= 1:
+                        logger.info("Entry-time sizing %s: qty=%d @ %.2f (Phase-A sizing had failed)",
+                                    sym, qty, px)
+                if qty < 1:
+                    # genuinely unaffordable (margin/leverage) — leave untraded, retry next bar
+                    logger.warning("Sizing 0 for %s at entry -- unaffordable, will retry next bar", sym)
+                    continue
+
                 cand["traded"] = True
 
                 try:
