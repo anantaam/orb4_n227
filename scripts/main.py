@@ -907,7 +907,17 @@ def main():
                     cand["traded"] = True
                     continue
 
+                # (a) Re-resolve the instrument token if Phase A's lookup failed
+                # (transient kite.ltp blip). Without a token the position can't be
+                # WebSocket-subscribed and its tick-SL would never fire.
                 tok = token_cache.get(sym)
+                if tok is None:
+                    try:
+                        tok = _get_instrument_token(broker, sym)
+                        token_cache[sym] = tok
+                    except Exception as _te:
+                        logger.warning("Token re-resolve failed %s: %s", sym, _te)
+                        tok = None
                 bar = fetch_latest_bar(broker, sym, trade_date, instrument_token=tok)
                 if bar is None:
                     continue
@@ -1052,13 +1062,20 @@ def main():
                     broker.modify_sl_order(order_id=pos["sl_order_id"], trigger_price=pos["sl_price"])
                 except Exception as exc:
                     logger.warning("SL modify failed %s: %s", sym, exc)
-            # Bar-based fallback breach: paper mode only, and only when the tick
-            # monitor is unavailable (WS down). Live mode relies on the exchange SL-M.
-            if cfg.mode == "paper" and not (cfg.use_websocket and ticker.is_available):
+            # (b) Bar-based fallback breach: paper mode, per-position. A position is
+            # tick-eligible only if the WS is up AND it has a valid token (so it was
+            # subscribed). If not eligible (WS down, or token is None -> never subscribed),
+            # the tick monitor can't see it, so enforce the stop at bar level here.
+            # Gating on eligibility (not live watch-state) avoids a double-exit race with
+            # a tick that fires mid-loop. Live mode relies on the exchange SL-M.
+            tick_eligible = cfg.use_websocket and ticker.is_available and tok is not None
+            if cfg.mode == "paper" and not tick_eligible:
                 breached = (direction == 1 and bar["low"] <= sl_cur) or \
                            (direction == -1 and bar["high"] >= sl_cur)
                 if breached:
-                    _do_stop_exit(broker, cfg, pos, sl_cur)
+                    logger.warning("BAR-FALLBACK SL %s (not tick-watched, tok=%s) sl=%.2f",
+                                   sym, tok, sl_cur)
+                    _do_stop_exit(broker, cfg, pos, sl_cur, exit_label="bar_sl")
                     if tok:
                         ticker.unregister_stop(tok)
                     bar_exited.add(sym)
