@@ -25,3 +25,4 @@ state_dir: /home/ubuntu/orb/state/baseline
 journal_path: /home/ubuntu/orb/state/baseline/trade_journal.jsonl
 discord_webhook_url: ""        # set real webhook in the live (gitignored) yaml
 non_trading_shutdown_command: ""
+risk_pct: 0.0125

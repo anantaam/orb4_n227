@@ -43,6 +43,7 @@ class OrbConfig:
     use_websocket: bool
     # Strategy (backtest-aligned rf=0.15)
     r_factor: float
+    risk_pct: float
     atr_mult: float
     rel_vol_min: float
     min_turn: float
@@ -84,6 +85,7 @@ def _defaults(base_dir: Path) -> dict:
         "journal_path": str(base_dir / "state" / "{mode}" / "trade_journal.jsonl"),
         "use_websocket": True,
         "r_factor": 0.15,
+        "risk_pct": 0.0125,
         "atr_mult": 1.5,
         "rel_vol_min": 1.8,
         "min_turn": 25e7,
@@ -138,6 +140,7 @@ def load_config(base_dir: Path | None = None) -> OrbConfig:
         journal_path=journal_path,
         use_websocket=bool(data.get("use_websocket", True)),
         r_factor=float(data.get("r_factor", 0.15)),
+        risk_pct=float(data.get("risk_pct", 0.0125)),
         atr_mult=float(data.get("atr_mult", 1.5)),
         rel_vol_min=float(data.get("rel_vol_min", 1.8)),
         min_turn=float(data.get("min_turn", 25e7)),
