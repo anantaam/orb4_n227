@@ -11,7 +11,7 @@ CAPITAL    = 100_000
 TODAY      = date.today().isoformat()
 
 TRACKS = [
-    ("Baseline", BASE_DIR / "state/baseline/trade_journal.jsonl"),
+    ("Baseline (LIVE)", BASE_DIR / "state/baseline/live/trade_journal.jsonl"),
 ]
 
 EXIT_LABEL = {

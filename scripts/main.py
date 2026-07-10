@@ -8,8 +8,10 @@ PHASE C  (15:20):        Hard exit -- cancel all SL/targets, close positions
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import math
+import os
 import sys
 import threading
 import time
@@ -394,6 +396,24 @@ def fetch_latest_bar(broker: BrokerAdapter, symbol: str, trade_date: date,
     except Exception as exc:
         logger.warning("bar fetch failed %s: %s", symbol, exc)
         return None
+
+
+def _day_realized_pnl(journal_path: Path, today_str: str) -> float:
+    """Sum today's realized net P&L from the journal (for the malfunction tripwire)."""
+    if not journal_path.exists():
+        return 0.0
+    total = 0.0
+    try:
+        for line in journal_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            r = json.loads(line)
+            if r.get("event") in ("exit_execution", "software_sl_exit") and r.get("ts_utc", "")[:10] == today_str:
+                total += r.get("net_pnl", 0) or 0
+    except Exception:
+        return 0.0
+    return total
 
 
 def _do_stop_exit(broker: BrokerAdapter, cfg: OrbConfig, pos: dict, sl_cur: float,
@@ -868,6 +888,23 @@ def main():
 
         now_ist = ist_now()
         if _past_time(cfg.hard_exit_ist):
+            break
+
+        # ── Kill switch + malfunction tripwire ───────────────────────────────
+        # These are operational backstops, NOT a strategy rule: the kill file lets
+        # you flatten on demand; the tripwire only fires on a loss far outside normal
+        # range (a bug/runaway can't be reached by normal trading), so it never alters
+        # strategy behaviour. Either one breaks to Phase C, which flattens immediately.
+        if (BASE_DIR / "KILL").exists():
+            logger.error("KILL file present -- flattening all positions and exiting")
+            notify_error(cfg.discord_webhook_url, f"[{cfg.mode}] KILL switch tripped -- flattening")
+            break
+        day_pnl_so_far = _day_realized_pnl(cfg.journal_path, today_str)
+        if day_pnl_so_far <= cfg.max_day_loss:
+            logger.error("MALFUNCTION TRIPWIRE: day realized %.0f <= limit %.0f -- flattening & exit",
+                         day_pnl_so_far, cfg.max_day_loss)
+            notify_error(cfg.discord_webhook_url,
+                         f"[{cfg.mode}] MALFUNCTION TRIPWIRE day P&L Rs {day_pnl_so_far:.0f} <= Rs {cfg.max_day_loss:.0f} -- flattening")
             break
 
         # Entry window: backtest enters only in [entry_start, entry_cutoff].

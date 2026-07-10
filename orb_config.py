@@ -49,6 +49,7 @@ class OrbConfig:
     min_turn: float
     min_atr: float
     top_k: int
+    max_day_loss: float   # malfunction tripwire: flatten+halt if day realized P&L <= this (Rs)
     # Selectivity
     min_score: float
     # Notifications
@@ -91,6 +92,7 @@ def _defaults(base_dir: Path) -> dict:
         "min_turn": 25e7,
         "min_atr": 4.0,
         "top_k": 8,
+        "max_day_loss": -25000.0,
         "min_score": 0.0,
         "discord_webhook_url": "",
         "non_trading_shutdown_command": "",
@@ -146,6 +148,7 @@ def load_config(base_dir: Path | None = None) -> OrbConfig:
         min_turn=float(data.get("min_turn", 25e7)),
         min_atr=float(data.get("min_atr", 4.0)),
         top_k=int(data.get("top_k", 8)),
+        max_day_loss=float(data.get("max_day_loss", -25000.0)),
         min_score=float(data.get("min_score", 0.0)),
         discord_webhook_url=str(data.get("discord_webhook_url") or ""),
         non_trading_shutdown_command=str(data.get("non_trading_shutdown_command") or ""),
