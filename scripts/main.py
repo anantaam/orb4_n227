@@ -1123,9 +1123,10 @@ def main():
         if dirty:
             save_engine_state(cfg.state_dir, cfg.mode, state)
 
-        # Periodic reconcile (every 5 iterations ~= 5 min)
+        # Reconcile every bar (~1 min) so a fired exchange SL/target is booked promptly
+        # (live exits are detected here; snappier books + less dead-SL-modify retry noise).
         reconcile_counter += 1
-        if reconcile_counter % 5 == 0:
+        if reconcile_counter % 1 == 0:
             state = reconcile_positions(broker, state, cfg, cfg.journal_path)
             save_engine_state(cfg.state_dir, cfg.mode, state)
 
