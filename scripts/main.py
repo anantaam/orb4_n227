@@ -866,9 +866,8 @@ def main():
         _tok = token_cache.get(_sym)
         if _tok:
             ticker.subscribe(_tok)
-            if cfg.mode == "paper":
-                _dir = _pos.get("dir_i", 1 if _pos["direction"] == "LONG" else -1)
-                ticker.register_stop(_tok, _sym, _dir, float(_pos["sl_price"]))
+            _dir = _pos.get("dir_i", 1 if _pos["direction"] == "LONG" else -1)
+            ticker.register_stop(_tok, _sym, _dir, float(_pos["sl_price"]))   # both modes
     del _open_state  # use fresh load() inside the loop
 
     # Sizing is risk-based and computed at entry (qty = risk_budget / stop_distance),
@@ -1016,16 +1015,29 @@ def main():
                     r_val = or_width * cfg.r_factor
                     sl_price = round((or_low - r_val) if direction == 1 else (or_high + r_val), 2)
 
+                    # ── Live SL model: SOFTWARE-SIDE TRAIL + exchange crash backstop ──
+                    # The active trailing stop is tick-driven in this process (same as paper);
+                    # a WIDE static exchange SL-M is placed as a backstop that only fires if
+                    # the daemon dies or the WebSocket drops. We never modify the exchange
+                    # order (avoids Zerodha's 25-modify-per-order cap that broke on 2026-07-13).
                     software_sl = False
                     sl_oid = ""
                     if cfg.mode != "paper":
+                        # crash backstop = initial_sl - 2*r_val below entry (LONG), symmetric for SHORT
+                        # deliberately wider than any trail can reach, so the exchange only
+                        # sees this order fire when the engine is offline.
+                        crash_r = or_width * cfg.r_factor * 2.0
+                        crash_sl = round((or_low - or_width * cfg.r_factor - crash_r)
+                                         if direction == 1 else
+                                         (or_high + or_width * cfg.r_factor + crash_r), 2)
                         try:
                             sl_oid = broker.place_sl_order(
                                 symbol=sym, side=("SELL" if direction == 1 else "BUY"),
-                                quantity=filled_qty, trigger_price=sl_price,
+                                quantity=filled_qty, trigger_price=crash_sl,
                             )
+                            logger.info("CRASH BACKSTOP SL-M %s @ %.2f (id=%s)", sym, crash_sl, sl_oid)
                         except Exception as exc:
-                            logger.error("SL-M placement failed for %s: %s -- software SL active", sym, exc)
+                            logger.error("Backstop SL-M placement failed for %s: %s", sym, exc)
                             software_sl = True
 
                     pos = {
@@ -1043,12 +1055,12 @@ def main():
                     append_jsonl(cfg.journal_path, {
                         "ts_utc": utc_now(), "event": "entry_execution", **pos
                     })
-                    # Subscribe; register tick-based stop ONLY in paper mode.
-                    # (Live mode's exchange SL-M is the executor — see modify_sl_order.)
+                    # Subscribe + register tick-based stop for BOTH paper and live.
+                    # Live: this is the primary stop (software-side trail on ticks). The
+                    # exchange SL-M is only a crash backstop, not the executor.
                     if tok:
                         ticker.subscribe(tok)
-                        if cfg.mode == "paper":
-                            ticker.register_stop(tok, sym, direction, sl_price)
+                        ticker.register_stop(tok, sym, direction, sl_price)
                     notify(cfg.discord_webhook_url,
                            f"ORB ENTRY [{cfg.mode}] {dir_str} {sym} qty={filled_qty} @ {entry_price:.2f} "
                            f"[{fill.exec_type}] SL={sl_price:.2f} (ATR trail)")
@@ -1095,19 +1107,16 @@ def main():
             dirty = True
             if tok:
                 ticker.update_stop(tok, pos["sl_price"])
-            if cfg.mode != "paper" and pos.get("sl_order_id") and not pos.get("software_sl_active"):
-                try:
-                    broker.modify_sl_order(order_id=pos["sl_order_id"], trigger_price=pos["sl_price"], symbol=sym)
-                except Exception as exc:
-                    logger.warning("SL modify failed %s: %s", sym, exc)
-            # (b) Bar-based fallback breach: paper mode, per-position. A position is
-            # tick-eligible only if the WS is up AND it has a valid token (so it was
-            # subscribed). If not eligible (WS down, or token is None -> never subscribed),
-            # the tick monitor can't see it, so enforce the stop at bar level here.
-            # Gating on eligibility (not live watch-state) avoids a double-exit race with
-            # a tick that fires mid-loop. Live mode relies on the exchange SL-M.
+            # NB: no per-bar modify_sl_order in live mode. The exchange SL-M is a wide,
+            # static crash backstop; the trailing stop is enforced tick-side in this
+            # process. This eliminates Zerodha's 25-modify-per-order cap (broke 2026-07-13).
+
+            # Bar-based fallback breach: BOTH modes now use tick-based stops, so this
+            # runs only if the tick monitor isn't watching this position (WS down, or
+            # token None -> never subscribed). Gate on eligibility (not live watch-state)
+            # to avoid a double-exit race with a tick firing mid-loop.
             tick_eligible = cfg.use_websocket and ticker.is_available and tok is not None
-            if cfg.mode == "paper" and not tick_eligible:
+            if not tick_eligible:
                 breached = (direction == 1 and bar["low"] <= sl_cur) or \
                            (direction == -1 and bar["high"] >= sl_cur)
                 if breached:
