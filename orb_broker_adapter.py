@@ -26,6 +26,7 @@ class BrokerAdapter:
         self.paper = paper
         self.cfg = cfg
         self.kite = None
+        self._tick_map = None   # symbol -> tick_size, lazy-loaded from instruments.csv
 
     def login(self):
         self.kite = kite_client.login(paper=self.paper)
@@ -69,9 +70,40 @@ class BrokerAdapter:
             logger.warning("Orderbook fetch failed for %s: %s", symbol, exc)
             return None, None
 
+    def _load_tick_map(self) -> dict:
+        """symbol -> tick_size from data/instruments.csv (NSE EQ rows). Cached."""
+        if self._tick_map is not None:
+            return self._tick_map
+        m = {}
+        try:
+            import csv
+            from pathlib import Path
+            data_dir = getattr(self.cfg, "data_1m_dir", None) if self.cfg else None
+            path = Path(data_dir) / "instruments.csv" if data_dir else Path("data/instruments.csv")
+            with open(path, newline="") as f:
+                for row in csv.DictReader(f):
+                    if row.get("exchange") == "NSE" and row.get("segment") == "NSE" and str(row.get("instrument_type","")).upper() == "EQ":
+                        try:
+                            ts = float(row.get("tick_size") or 0)
+                            if ts > 0:
+                                m[str(row.get("tradingsymbol","")).strip().upper()] = ts
+                        except (TypeError, ValueError):
+                            pass
+        except Exception as exc:
+            logger.warning("tick_size map load failed: %s -- defaulting to 0.05", exc)
+        self._tick_map = m
+        return m
+
     def _tick_size(self, symbol: str) -> float:
-        """NSE equity tick size is 0.05 for most stocks."""
-        return 0.05
+        """Real NSE-EQ tick size for this symbol (₹0.05 / 0.10 / 1.00 …). Default 0.05."""
+        return self._load_tick_map().get(str(symbol).strip().upper(), 0.05)
+
+    def _round_tick(self, price: float, symbol: str) -> float:
+        """Round a price to the symbol's tick grid so Kite accepts it."""
+        tick = self._tick_size(symbol)
+        if tick <= 0:
+            return round(price, 2)
+        return round(round(price / tick) * tick, 2)
 
     # ── Sizing helpers ────────────────────────────────────────────────────────
 
@@ -134,6 +166,8 @@ class BrokerAdapter:
                 limit_px = round(min(best_bid, trigger_price) - tick, 2)
             else:
                 limit_px = round(trigger_price - fallback_ticks * tick, 2)
+
+        limit_px = self._round_tick(limit_px, symbol)   # align to the symbol's tick grid
 
         # Paper mode: simulate fill at the computed orderbook-aware limit price.
         # In paper mode wait_for_order_fill_state returns average_price=None, which would
@@ -246,6 +280,7 @@ class BrokerAdapter:
     ) -> str:
         """Place exchange-native SL-M. Returns order_id. No fill wait -- exchange fires it."""
         side_up = side.upper()
+        trigger_price = self._round_tick(trigger_price, symbol)   # align to tick grid
         logger.info("SL-M %s %s qty=%d trig=%.2f", side_up, symbol, quantity, trigger_price)
         oid = kite_client.place_order_with_retry(
             self.kite,
@@ -263,16 +298,17 @@ class BrokerAdapter:
         )
         return str(oid or "")
 
-    def modify_sl_order(self, *, order_id: str, trigger_price: float) -> None:
+    def modify_sl_order(self, *, order_id: str, trigger_price: float, symbol: str = "") -> None:
         """Modify an open SL-M order's trigger price (live-mode trailing stop)."""
         if not order_id:
             return
         if self.paper:
             return  # paper trailing is tracked in-process, no broker order to modify
+        trig = self._round_tick(trigger_price, symbol) if symbol else round(float(trigger_price), 2)
         self.kite.modify_order(
             variety=self.kite.VARIETY_REGULAR,
             order_id=order_id,
-            trigger_price=round(float(trigger_price), 2),
+            trigger_price=trig,
         )
 
     # ── Target order: exchange-held LIMIT ─────────────────────────────────────
@@ -287,6 +323,7 @@ class BrokerAdapter:
     ) -> str:
         """Place LIMIT target order. Returns order_id. Exchange manages it."""
         side_up = side.upper()
+        price = self._round_tick(price, symbol)   # align to tick grid
         logger.info("TARGET LIMIT %s %s qty=%d price=%.2f", side_up, symbol, quantity, price)
         oid = kite_client.place_order_with_retry(
             self.kite,
@@ -356,6 +393,9 @@ class BrokerAdapter:
                 skip_limit = True
             else:
                 limit_px = round(best_ask * ask_frac, 2)
+
+        if limit_px is not None:
+            limit_px = self._round_tick(limit_px, symbol)   # align to tick grid
 
         filled_qty = 0
         avg_price = None

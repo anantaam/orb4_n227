@@ -1097,7 +1097,7 @@ def main():
                 ticker.update_stop(tok, pos["sl_price"])
             if cfg.mode != "paper" and pos.get("sl_order_id") and not pos.get("software_sl_active"):
                 try:
-                    broker.modify_sl_order(order_id=pos["sl_order_id"], trigger_price=pos["sl_price"])
+                    broker.modify_sl_order(order_id=pos["sl_order_id"], trigger_price=pos["sl_price"], symbol=sym)
                 except Exception as exc:
                     logger.warning("SL modify failed %s: %s", sym, exc)
             # (b) Bar-based fallback breach: paper mode, per-position. A position is
