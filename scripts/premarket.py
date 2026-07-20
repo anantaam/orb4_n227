@@ -52,15 +52,13 @@ def parse_args():
 
 
 def download_1m_data(days: int, data_dir: Path) -> None:
-    """Run e3's download script for full FnO universe."""
-    dl_script = Path("/home/ubuntu/e3/scripts/download_kite_1m_fno.py")
+    """Download full FnO-underlying 1m universe (vendored from e3, uses orb's own venv/kite_client)."""
+    dl_script = Path(__file__).resolve().parent / "download_kite_1m_fno.py"
     if not dl_script.exists():
         logger.warning("Download script not found at %s -- skipping download", dl_script)
         return
-    e3_venv = Path("/home/ubuntu/e3/venv/bin/python")
-    python = str(e3_venv) if e3_venv.exists() else sys.executable
-    # --force skips e3's session gate AND its Discord "E3 SESSION OK" notification
-    cmd = [python, str(dl_script), "--days", str(days), "--out", str(data_dir), "--force"]
+    # --force skips the session-day gate (premarket.py already does its own gate)
+    cmd = [sys.executable, str(dl_script), "--days", str(days), "--out", str(data_dir), "--force"]
     logger.info("Running download: %s", " ".join(cmd))
     result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
