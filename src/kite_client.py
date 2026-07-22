@@ -2,10 +2,12 @@
 Kite client: login, instruments download, positions, order place + status poll.
 In paper mode, order methods only log and return simulated order_id.
 """
+import json
+import logging
 import os
 import threading
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qs, urlparse
 
@@ -23,6 +25,10 @@ try:
     from . import discord_notifier
 except ImportError:
     discord_notifier = None
+
+logger = logging.getLogger(__name__)
+
+_TOKEN_PATH = "/home/ubuntu/orb/state/live/kite_token.json"
 
 
 def _get_creds():
@@ -84,6 +90,28 @@ def login(paper: bool = False) -> KiteConnect | None:
         request_token = parse_qs(urlparse(r.headers["location"]).query)["request_token"][0]
         data = kite.generate_session(request_token, api_secret=api_secret)
         kite.set_access_token(data["access_token"])
+
+        # Persist the access token so other processes on this box (e.g. a separate
+        # scanner service) can reuse this session instead of logging in themselves --
+        # a second login would generate a new token and invalidate this one, killing
+        # the live websocket mid-session. Failure here must never break login().
+        try:
+            token_dir = os.path.dirname(_TOKEN_PATH)
+            os.makedirs(token_dir, exist_ok=True)
+            tmp_path = _TOKEN_PATH + ".tmp"
+            payload = {
+                "access_token": data["access_token"],
+                "api_key": api_key,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with open(tmp_path, "w") as f:
+                json.dump(payload, f)
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, _TOKEN_PATH)
+            logger.info("Kite access token persisted to %s", _TOKEN_PATH)
+        except Exception as exc:
+            logger.warning("Failed to persist Kite access token: %s", exc)
+
         return kite
     except Exception as e:
         if discord_notifier:
