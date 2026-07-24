@@ -119,6 +119,38 @@ def login(paper: bool = False) -> KiteConnect | None:
         raise RuntimeError(f"Kite login failed: {e}") from e
 
 
+def login_or_reuse(paper: bool = False, max_age_hours: float = 20.0) -> KiteConnect | None:
+    """
+    Reuse today's persisted access token (written by an earlier login this trading
+    day, e.g. premarket.py at 08:30) instead of performing a fresh OTP/TOTP login --
+    cuts a second full login (with its 2FA round-trip) out of the day's startup path.
+
+    Falls back to a full login() -- which re-persists a fresh token as a side effect --
+    if the persisted token is missing, older than max_age_hours (catches a stale file
+    left over from a prior day), from a different api_key, or fails a live validation
+    call. Never raises for a reuse failure; only login()'s own failure can raise.
+    """
+    try:
+        if os.path.exists(_TOKEN_PATH):
+            with open(_TOKEN_PATH) as f:
+                data = json.load(f)
+            generated_at = datetime.fromisoformat(data["generated_at"])
+            age_hours = (datetime.now(timezone.utc) - generated_at).total_seconds() / 3600.0
+            api_key = _get_creds().get("api_key")
+            if age_hours <= max_age_hours and data.get("api_key") == api_key:
+                kite = KiteConnect(api_key=api_key)
+                kite.set_access_token(data["access_token"])
+                kite.profile()  # validate the token is actually live before trusting it
+                logger.info("Reused persisted Kite access token (age %.2fh)", age_hours)
+                return kite
+            logger.info("Persisted Kite token stale (age %.2fh) or key mismatch -- fresh login", age_hours)
+        else:
+            logger.info("No persisted Kite token found -- fresh login")
+    except Exception as exc:
+        logger.info("Could not reuse persisted Kite token (%s) -- fresh login", exc)
+    return login(paper=paper)
+
+
 def _parse_expiry(expiry) -> date | None:
     """Parse instrument expiry to date. Handles str, datetime, date, or None."""
     if expiry is None or (isinstance(expiry, float) and pd.isna(expiry)):

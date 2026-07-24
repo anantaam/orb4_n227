@@ -29,7 +29,7 @@ class BrokerAdapter:
         self._tick_map = None   # symbol -> tick_size, lazy-loaded from instruments.csv
 
     def login(self):
-        self.kite = kite_client.login(paper=self.paper)
+        self.kite = kite_client.login_or_reuse(paper=self.paper)
         return self.kite
 
     # ── Helpers ───────────────────────────────────────────────────────────────
